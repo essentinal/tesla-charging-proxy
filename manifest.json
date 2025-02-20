@@ -1,0 +1,9 @@
+{
+  "domain": "tesla_charging_proxy",
+  "name": "Tesla Charging Proxy",
+  "config_flow": true,
+  "documentation": "https://github.com/essentinal/tesla-charging-proxy",
+  "requirements": [],
+  "codeowners": ["@essentinal"],
+  "version": "0.1.0"
+}
