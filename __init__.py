@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from datetime import timedelta, datetime
-
 from homeassistant.components.number import NumberEntity
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
@@ -10,13 +9,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device import async_device_info_to_link_from_entity
 from homeassistant.helpers.event import async_track_state_change_event
-
-from . import DOMAIN
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+  """Set up Tesla Charging Proxy from a config entry."""
   hass.data[DOMAIN] = {}
   # TODO add dynamic configuration of source entities
   hass.data[DOMAIN]["blacky_current"] = CarChargingProxy(hass, "blacky", "number.blacky_maximaler_ac_ladestrom")
@@ -26,14 +24,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
   await hass.config_entries.async_forward_entry_setups(entry, ["number", "switch"])
   return True
 
-
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
   """Unload a config entry."""
   unload_ok = await hass.config_entries.async_unload_platforms(entry, ["number", "switch"])
   if unload_ok:
     hass.data[DOMAIN] = {}
   return unload_ok
-
 
 class CarChargingProxy(NumberEntity):
   def __init__(self, hass, name, source_entity):
@@ -89,11 +85,19 @@ class CarChargingProxy(NumberEntity):
 
     @callback
     async def _async_update_from_original(event):
+      if self.hass is None:  # Check if entity is still valid
+        _LOGGER.debug(f"Entity {self._name} is no longer valid, skipping state update.")
+        return
+
       new_state = event.data.get("new_state")
       if new_state:
-        self._state = float(new_state.state)
-        self._state = max(self._attr_native_min_value, min(self._attr_native_max_value, self._state))
-        await self.async_write_ha_state()
+        try:
+          # Ensure the state is an integer
+          self._state = int(float(new_state.state))  # Convert to float first in case the original is a string
+          self._state = max(self._attr_native_min_value, min(self._attr_native_max_value, self._state))
+          await self.async_write_ha_state()
+        except Exception as e:
+          _LOGGER.exception(f"Error updating state for {self._name}: {e}")
 
     self.async_on_remove(
       async_track_state_change_event(
@@ -148,8 +152,13 @@ class CarChargingProxy(NumberEntity):
 
   async def _get_original_state(self):
     state = self.hass.states.get(self._source_entity)
-    return float(state.state) if state else None
-
+    if state and state.state not in ['unavailable', 'unknown']:
+      try:
+        return int(float(state.state)) #Also ensure original state is an integer
+      except ValueError:
+        _LOGGER.warning(f"Invalid state value: {state.state}")
+        return None
+    return None
 
 class CarChargingSwitchProxy(SwitchEntity):
   def __init__(self, hass, name, source_entity):
@@ -195,6 +204,10 @@ class CarChargingSwitchProxy(SwitchEntity):
 
     @callback
     async def _async_update_from_original(event):
+      if self.hass is None:  # Check if entity is still valid
+        _LOGGER.debug(f"Entity {self._name} is no longer valid, skipping state update.")
+        return
+
       new_state = event.data.get("new_state")
       if new_state:
         self._state = new_state.state == "on"
