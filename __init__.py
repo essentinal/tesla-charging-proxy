@@ -93,9 +93,9 @@ class CarChargingProxy(NumberEntity):
       if new_state:
         try:
           # Ensure the state is an integer
-          self._state = int(float(new_state.state))  # Convert to float first in case the original is a string
+          self._state = int(float(new_state.state)) # Convert to float first in case the original is a string
           self._state = max(self._attr_native_min_value, min(self._attr_native_max_value, self._state))
-          await self.async_write_ha_state()
+          self.async_write_ha_state()
         except Exception as e:
           _LOGGER.exception(f"Error updating state for {self._name}: {e}")
 
@@ -148,7 +148,7 @@ class CarChargingProxy(NumberEntity):
       )
       self._state = self._desired_current
       self._last_update = datetime.now()
-      await self.async_write_ha_state()
+      self.async_write_ha_state()
 
   async def _get_original_state(self):
     state = self.hass.states.get(self._source_entity)
@@ -211,7 +211,7 @@ class CarChargingSwitchProxy(SwitchEntity):
       new_state = event.data.get("new_state")
       if new_state:
         self._state = new_state.state == "on"
-        await self.async_write_ha_state()
+        self.async_write_ha_state()
 
     self.async_on_remove(
       async_track_state_change_event(
@@ -262,7 +262,7 @@ class CarChargingSwitchProxy(SwitchEntity):
       )
       self._state = self._desired_state
       self._last_update = datetime.now()
-      await self.async_write_ha_state()
+      self.async_write_ha_state()
 
   async def _get_original_state(self):
     state = self.hass.states.get(self._source_entity)
