@@ -18,13 +18,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
   hass.data[DOMAIN] = {}
 
   # Get data from the configuration entry
-  name = entry.data.get("name")
+  vehicle_name = entry.data.get("vehicle_name")
   charging_current_entity = entry.data.get("charging_current_entity")
   charging_switch_entity = entry.data.get("charging_switch_entity")
 
-  # Create proxy entities
-  hass.data[DOMAIN][f"{name}_current"] = CarChargingProxy(hass, name, charging_current_entity)
-  hass.data[DOMAIN][f"{name}_switch"] = CarChargingSwitchProxy(hass, name, charging_switch_entity)
+  # Make keys unique per vehicle using the vehicle's name
+  hass.data[DOMAIN][f"{vehicle_name}_charging_current"] = CarChargingProxy(hass, vehicle_name, charging_current_entity)
+  hass.data[DOMAIN][f"{vehicle_name}_charging_switch"] = CarChargingSwitchProxy(hass, vehicle_name, charging_switch_entity)
 
   await hass.config_entries.async_forward_entry_setups(entry, ["number", "switch"])
   return True

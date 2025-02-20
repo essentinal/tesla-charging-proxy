@@ -2,6 +2,7 @@
 import logging
 
 import voluptuous as vol
+
 from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
@@ -9,7 +10,6 @@ from homeassistant.helpers import selector
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
   """Handle a config flow for Tesla Charging Proxy."""
@@ -19,64 +19,65 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
   async def async_step_user(self, user_input=None):
     """Handle the initial step."""
+    return await self.async_step_vehicle_select()
+
+  async def async_step_vehicle_select(self, user_input=None):
+    """Select the Tesla vehicle."""
     errors = {}
     if user_input is not None:
-      # Data validation and save configuration
-      return self.async_create_entry(title=user_input["name"], data=user_input)
+      self.vehicle_id = user_input["vehicle_id"]
+      return await self.async_step_entity_select()
+
+    # Get available Teslemetry devices (using a more robust approach)
+    teslemetry_devices = self.hass.config_entries.async_entries("teslemetry")
+    if not teslemetry_devices:
+      return self.async_abort(reason="no_teslemetry_devices")
+
+    vehicle_options = {}
+    for device in teslemetry_devices:
+      vehicle_options[device.entry_id] = device.title
+
+    if not vehicle_options:
+      return self.async_abort(reason="no_teslemetry_vehicles")
+
+    data_schema = vol.Schema({
+      vol.Required("vehicle_id"): vol.In(vehicle_options)
+    })
+
+    return self.async_show_form(
+      step_id="vehicle_select", data_schema=data_schema, errors=errors
+    )
+
+  async def async_step_entity_select(self, user_input=None):
+    """Select the entities for the selected vehicle."""
+    errors = {}
+    if user_input is not None:
+      # Get the vehicle name from the selected ID
+      vehicle_options = {}
+      teslemetry_devices = self.hass.config_entries.async_entries("teslemetry")
+      for device in teslemetry_devices:
+        vehicle_options[device.entry_id] = device.title
+      vehicle_name = vehicle_options.get(self.vehicle_id, "Tesla Charging Proxy")
+
+      user_input["vehicle_name"] = vehicle_name
+      user_input["vehicle_id"] = self.vehicle_id  # Save the vehicle ID
+      return self.async_create_entry(title=vehicle_name, data=user_input)
+
+    # Get entities related to the selected vehicle
+    number_entity_selector = selector.EntitySelector(
+      selector.EntitySelectorConfig(domain="number", integration="teslemetry")
+    )
+    switch_entity_selector = selector.EntitySelector(
+      selector.EntitySelectorConfig(domain="switch", integration="teslemetry")
+    )
 
     data_schema = vol.Schema(
       {
-        vol.Required("name"): str,
-        vol.Required("charging_current_entity"): selector.EntitySelector(
-          selector.EntitySelectorConfig(domain="number")
-        ),
-        vol.Required("charging_switch_entity"): selector.EntitySelector(
-          selector.EntitySelectorConfig(domain="switch")
-        ),
+        vol.Required("charging_current_entity"): number_entity_selector,
+        vol.Required("charging_switch_entity"): switch_entity_selector,
       }
     )
 
     return self.async_show_form(
-      step_id="user", data_schema=data_schema, errors=errors
-    )
-
-  @staticmethod
-  @callback
-  def async_get_options_flow(config_entry):
-    """Get the options flow for this handler."""
-    return OptionsFlowHandler(config_entry)
-
-
-class OptionsFlowHandler(config_entries.OptionsFlow):
-  """Handle options flow for Tesla Charging Proxy."""
-
-  def __init__(self, config_entry):
-    """Initialize options flow."""
-    self.config_entry = config_entry
-
-  async def async_step_init(self, user_input=None):
-    """Manage the options."""
-    if user_input is not None:
-      return self.async_create_entry(title="", data=user_input)
-
-    options_schema = vol.Schema(
-      {
-        vol.Required(
-          "charging_current_entity",
-          default=self.config_entry.options.get("charging_current_entity"),
-        ): selector.EntitySelector(
-          selector.EntitySelectorConfig(domain="number")
-        ),
-        vol.Required(
-          "charging_switch_entity",
-          default=self.config_entry.options.get("charging_switch_entity"),
-        ): selector.EntitySelector(
-          selector.EntitySelectorConfig(domain="switch")
-        ),
-      }
-    )
-
-    return self.async_show_form(
-      step_id="init",
-      data_schema=options_schema,
+      step_id="entity_select", data_schema=data_schema, errors=errors
     )
