@@ -4,7 +4,9 @@
   "config_flow": true,
   "documentation": "https://github.com/essentinal/tesla-charging-proxy",
   "requirements": [],
-  "codeowners": ["@essentinal"],
+  "codeowners": [
+    "@essentinal"
+  ],
   "homeassistant": "2025.2.0",
   "version": "0.1.0"
 }
