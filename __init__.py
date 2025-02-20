@@ -16,11 +16,16 @@ _LOGGER = logging.getLogger(__name__)
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
   """Set up Tesla Charging Proxy from a config entry."""
   hass.data[DOMAIN] = {}
-  # TODO add dynamic configuration of source entities
-  hass.data[DOMAIN]["blacky_current"] = CarChargingProxy(hass, "blacky", "number.blacky_maximaler_ac_ladestrom")
-  hass.data[DOMAIN]["tessy_current"] = CarChargingProxy(hass, "tessy", "number.tessy_maximaler_ac_ladestrom")
-  hass.data[DOMAIN]["blacky_switch"] = CarChargingSwitchProxy(hass, "blacky", "switch.blacky_laden")
-  hass.data[DOMAIN]["tessy_switch"] = CarChargingSwitchProxy(hass, "tessy", "switch.tessy_laden")
+
+  # Get data from the configuration entry
+  name = entry.data.get("name")
+  charging_current_entity = entry.data.get("charging_current_entity")
+  charging_switch_entity = entry.data.get("charging_switch_entity")
+
+  # Create proxy entities
+  hass.data[DOMAIN][f"{name}_current"] = CarChargingProxy(hass, name, charging_current_entity)
+  hass.data[DOMAIN][f"{name}_switch"] = CarChargingSwitchProxy(hass, name, charging_switch_entity)
+
   await hass.config_entries.async_forward_entry_setups(entry, ["number", "switch"])
   return True
 
