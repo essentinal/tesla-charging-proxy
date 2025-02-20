@@ -23,7 +23,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
   hass.data[DOMAIN]["tessy_current"] = CarChargingProxy(hass, "tessy", "number.tessy_maximaler_ac_ladestrom")
   hass.data[DOMAIN]["blacky_switch"] = CarChargingSwitchProxy(hass, "blacky", "switch.blacky_laden")
   hass.data[DOMAIN]["tessy_switch"] = CarChargingSwitchProxy(hass, "tessy", "switch.tessy_laden")
-
   await hass.config_entries.async_forward_entry_setups(entry, ["number", "switch"])
   return True
 
@@ -31,10 +30,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
   """Unload a config entry."""
   unload_ok = await hass.config_entries.async_unload_platforms(entry, ["number", "switch"])
-
   if unload_ok:
     hass.data[DOMAIN] = {}
-
   return unload_ok
 
 
@@ -56,7 +53,6 @@ class CarChargingProxy(NumberEntity):
     self._fast_update_interval = timedelta(seconds=10)
     self._min_current_delta = 1
     self._fast_update_delta = 4
-
     # find the device id of the source entity
     entity_registry = er.async_get(hass)
     entity_entry = entity_registry.async_get(source_entity)
@@ -92,19 +88,18 @@ class CarChargingProxy(NumberEntity):
     self._update_task = self.hass.loop.create_task(self._update_loop())
 
     @callback
-    def _async_update_from_original(event):
+    async def _async_update_from_original(event):
       new_state = event.data.get("new_state")
       if new_state:
         self._state = float(new_state.state)
         self._state = max(self._attr_native_min_value, min(self._attr_native_max_value, self._state))
-        self.async_write_ha_state()
+        await self.async_write_ha_state()
 
     self.async_on_remove(
       async_track_state_change_event(
         self.hass, [self._source_entity], _async_update_from_original
       )
     )
-
     # Initialize state from the original entity
     self._state = await self._get_original_state()
 
@@ -167,8 +162,7 @@ class CarChargingSwitchProxy(SwitchEntity):
     self._update_task = None
     self._min_update_interval = timedelta(minutes=1)
     self._fast_update_interval = timedelta(seconds=10)
-
-    # Find the device id of the source entity
+    # find the device id of the source entity
     entity_registry = er.async_get(hass)
     entity_entry = entity_registry.async_get(source_entity)
     if entity_entry and entity_entry.device_id:
@@ -200,18 +194,17 @@ class CarChargingSwitchProxy(SwitchEntity):
     self._update_task = self.hass.loop.create_task(self._update_loop())
 
     @callback
-    def _async_update_from_original(event):
+    async def _async_update_from_original(event):
       new_state = event.data.get("new_state")
       if new_state:
         self._state = new_state.state == "on"
-        self.async_write_ha_state()
+        await self.async_write_ha_state()
 
     self.async_on_remove(
       async_track_state_change_event(
         self.hass, [self._source_entity], _async_update_from_original
       )
     )
-
     # Initialize state from the original entity
     self._state = await self._get_original_state()
 
