@@ -194,15 +194,14 @@ class CarChargingProxy(NumberEntity):
       original_state = await self._get_original_state()
       if self._desired_current is not None and self._desired_current != original_state:
         current_delta = abs(float(self._desired_current) - float(original_state or 0))
-        if current_delta >= self._fast_update_delta:
-          await asyncio.sleep(self._fast_update_interval.total_seconds())
-        elif self._last_update is None or (now - self._last_update) >= self._min_update_interval:
+        required_interval = self._fast_update_interval if current_delta >= self._fast_update_delta else self._min_update_interval
+        if self._last_update is None or (now - self._last_update) >= required_interval:
           if current_delta >= self._min_current_delta:
             await self._update_car_api()
           else:
-            await asyncio.sleep(self._min_update_interval.total_seconds())
+            break
         else:
-          await asyncio.sleep((self._last_update + self._min_update_interval - now).total_seconds())
+          await asyncio.sleep((self._last_update + required_interval - now).total_seconds())
       else:
         break
 
