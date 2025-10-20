@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfElectricCurrent
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.device import async_device_info_to_link_from_entity
+from homeassistant.helpers.entity_registry import async_entity_id_to_device
 from homeassistant.helpers.event import async_track_state_change_event
 from .const import DOMAIN
 
@@ -57,12 +57,9 @@ class CarChargingProxy(NumberEntity):
     # find the device id of the source entity
     entity_registry = er.async_get(hass)
     entity_entry = entity_registry.async_get(source_entity)
+    self.device_entry = async_entity_id_to_device(hass, source_entity)
     if entity_entry and entity_entry.device_id:
       self._device_id = entity_entry.device_id
-      self._attr_device_info = async_device_info_to_link_from_entity(
-        hass,
-        source_entity,
-      )
     else:
       self._device_id = None
       _LOGGER.debug(f"Device ID for {self._name} not found")
@@ -179,12 +176,9 @@ class CarChargingSwitchProxy(SwitchEntity):
     # find the device id of the source entity
     entity_registry = er.async_get(hass)
     entity_entry = entity_registry.async_get(source_entity)
+    self.device_entry = async_entity_id_to_device(hass, source_entity)
     if entity_entry and entity_entry.device_id:
       self._device_id = entity_entry.device_id
-      self._attr_device_info = async_device_info_to_link_from_entity(
-        hass,
-        source_entity,
-      )
     else:
       self._device_id = None
       _LOGGER.debug(f"Device ID for {self._name} charging switch not found")
