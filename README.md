@@ -59,6 +59,28 @@ The integration creates proxy entities that mirror the state of the original Tes
 
 This approach helps to reduce the number of API calls to the Tesla and prevent potential issues caused by sending too many requests in a short period.
 
+## Teslemetry API Credit Conservation
+
+This integration was specifically developed to optimize API usage when working with the Teslemetry integration, which operates under a credit-based API system.
+
+### How It Works
+
+- **Credit-Based API**: Teslemetry uses a credit system where each API call to your Tesla vehicle consumes credits from your account allocation.
+- **Intelligent Buffering**: The proxy implements smart buffering with configurable thresholds:
+  - Standard interval: Commands are sent no more than once per minute for small changes
+  - Fast interval: Larger changes (≥4A) are processed more quickly (every 10 seconds)
+  - Deduplication: Identical consecutive commands are automatically filtered out
+- **Automation Friendly**: Particularly valuable when used with solar excess charging automations like [InventoCasa's PV Excess Control](https://github.com/InventoCasa/ha-advanced-blueprints/blob/main/PV_Excess_Control/README.md) that may trigger frequent charging current adjustments
+
+### Benefits
+
+- **Reduced API Calls**: Significantly reduces the number of API calls made to Tesla's servers
+- **Credit Conservation**: Helps stay within Teslemetry's API limits without sacrificing functionality
+- **Reliable Operation**: Prevents potential rate limiting or account restrictions due to excessive API usage
+- **Responsive Control**: Still provides quick response for significant charging current changes
+
+This approach is especially valuable for dynamic charging scenarios where solar production or grid conditions may trigger frequent adjustment requests that would otherwise consume excessive API credits.
+
 ## Troubleshooting
 
 *   **Entities not appearing:**

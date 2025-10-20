@@ -11,10 +11,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
   """Set up the number platform."""
-  entities = [
-    entity
-    for entity in hass.data[DOMAIN].values()
-    if isinstance(entity, CarChargingProxy)
-  ]
-  _LOGGER.debug(f"Adding charging current entities: {entities}")
+  entry_store = hass.data[DOMAIN].get(entry.entry_id, {})
+  entities = entry_store.get("numbers", [])
+  _LOGGER.debug("Adding charging current entities: %s", entities)
   async_add_entities(entities)
