@@ -109,6 +109,8 @@ class CarChargingProxy(NumberEntity):
     self._fast_update_interval = timedelta(seconds=10)
     self._min_current_delta = 1
     self._fast_update_delta = 4
+    self._fast_attempts = 0
+    self._max_fast_attempts = 4
     # find the device id of the source entity
     entity_registry = er.async_get(hass)
     entity_entry = entity_registry.async_get(source_entity)
@@ -146,6 +148,7 @@ class CarChargingProxy(NumberEntity):
     # Update state immediately so external systems see the change
     self._state = value
     self._desired_current = value
+    self._fast_attempts = 0
     self.async_write_ha_state()
     # Schedule the actual API update with buffering
     await self._schedule_update()
@@ -185,6 +188,7 @@ class CarChargingProxy(NumberEntity):
   async def _schedule_update(self):
     if self._update_task:
       self._update_task.cancel()
+    _LOGGER.debug("%s scheduling current update: desired=%s", self._vehicle_title, self._desired_current)
     self._update_task = self.hass.loop.create_task(self._update_loop())
 
   async def _update_loop(self):
@@ -192,21 +196,66 @@ class CarChargingProxy(NumberEntity):
       now = datetime.now()
       # Get the original entity's state to compare with desired state
       original_state = await self._get_original_state()
+      if original_state is None:
+        _LOGGER.debug("%s original current unavailable, falling back to slow retry", self._vehicle_title)
+        required_interval = self._min_update_interval
+      else:
+        required_interval = None
       if self._desired_current is not None and self._desired_current != original_state:
         current_delta = abs(float(self._desired_current) - float(original_state or 0))
-        required_interval = self._fast_update_interval if current_delta >= self._fast_update_delta else self._min_update_interval
+        _LOGGER.debug(
+          "%s current diff detected: desired=%s original=%s delta=%s",
+          self._vehicle_title,
+          self._desired_current,
+          original_state,
+          current_delta,
+        )
+        if required_interval is None:
+          if current_delta >= self._fast_update_delta and self._fast_attempts < self._max_fast_attempts:
+            required_interval = self._fast_update_interval
+          else:
+            if current_delta >= self._fast_update_delta and self._fast_attempts >= self._max_fast_attempts:
+              _LOGGER.debug(
+                "%s reached max fast attempts (%s), switching to slow interval",
+                self._vehicle_title,
+                self._max_fast_attempts,
+              )
+            required_interval = self._min_update_interval
         if self._last_update is None or (now - self._last_update) >= required_interval:
           if current_delta >= self._min_current_delta:
+            _LOGGER.debug(
+              "%s sending current update now (interval=%s)",
+              self._vehicle_title,
+              required_interval,
+            )
             await self._update_car_api()
+            if required_interval == self._fast_update_interval:
+              self._fast_attempts += 1
+            else:
+              self._fast_attempts = 0
           else:
+            _LOGGER.debug("%s current delta below threshold, stopping loop", self._vehicle_title)
             break
         else:
+          wait_seconds = (self._last_update + required_interval - now).total_seconds()
+          _LOGGER.debug(
+            "%s waiting %s seconds before next current retry",
+            self._vehicle_title,
+            round(wait_seconds, 1),
+          )
           await asyncio.sleep((self._last_update + required_interval - now).total_seconds())
       else:
+        _LOGGER.debug("%s current update loop complete", self._vehicle_title)
         break
 
   async def _update_car_api(self):
     # We already checked that desired_current != original_state in _update_loop
+    _LOGGER.debug(
+      "%s calling number.set_value for %s -> %s",
+      self._vehicle_title,
+      self._source_entity,
+      self._desired_current,
+    )
     await self.hass.services.async_call(
       "number", "set_value",
       {"entity_id": self._source_entity, "value": self._desired_current}
@@ -303,10 +352,12 @@ class CarChargingSwitchProxy(SwitchEntity):
       # Update state immediately so external systems see the change
       self._desired_state = state
       self._state = state
+      _LOGGER.debug("%s switch proxy set to %s (desired=%s)", self._vehicle_title, state, self._desired_state)
       self.async_write_ha_state()
       
       # If turning off, check if there's a current proxy we should reset
       if not state:
+        _LOGGER.debug("%s switch off detected, resetting current proxy", self._vehicle_title)
         await self._reset_current_proxy()
       
       # Schedule the actual API update with buffering
@@ -319,7 +370,7 @@ class CarChargingSwitchProxy(SwitchEntity):
     
     if current_entity is not None:
       # Reset current to minimum (1A) when turning off
-      _LOGGER.debug("%s charging switch resetting current to 1A", self._vehicle_title)
+      _LOGGER.debug("%s charging switch resetting %s to 1A", self._vehicle_title, current_entity_id)
       await self.hass.services.async_call(
         "number", "set_value",
         {"entity_id": current_entity_id, "value": 1}
@@ -328,6 +379,7 @@ class CarChargingSwitchProxy(SwitchEntity):
   async def _schedule_update(self):
     if self._update_task:
       self._update_task.cancel()
+    _LOGGER.debug("%s scheduling switch update: desired=%s", self._vehicle_title, self._desired_state)
     self._update_task = self.hass.loop.create_task(self._update_loop())
 
   async def _update_loop(self):
@@ -336,17 +388,28 @@ class CarChargingSwitchProxy(SwitchEntity):
       # Get the original entity's state to compare with desired state
       original_state = await self._get_original_state()
       if self._desired_state is not None and self._desired_state != original_state:
+        _LOGGER.debug(
+          "%s switch diff detected: desired=%s original=%s",
+          self._vehicle_title,
+          self._desired_state,
+          original_state,
+        )
         if self._last_update is None or (now - self._last_update) >= self._min_update_interval:
+          _LOGGER.debug("%s sending switch update now", self._vehicle_title)
           await self._update_car_api()
         else:
           # Wait until the minimum update interval has passed
-          await asyncio.sleep((self._last_update + self._min_update_interval - now).total_seconds())
+          wait_seconds = (self._last_update + self._min_update_interval - now).total_seconds()
+          _LOGGER.debug("%s waiting %s seconds before next switch retry", self._vehicle_title, round(wait_seconds, 1))
+          await asyncio.sleep(wait_seconds)
       else:
+        _LOGGER.debug("%s switch update loop complete", self._vehicle_title)
         break
 
   async def _update_car_api(self):
     # We already checked that desired_state != original_state in _update_loop
     service = "turn_on" if self._desired_state else "turn_off"
+    _LOGGER.debug("%s calling switch.%s for %s", self._vehicle_title, service, self._source_entity)
     await self.hass.services.async_call(
       "switch", service,
       {"entity_id": self._source_entity}
